@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand" 
+	"path"
 	"io"
 	"fmt"
 	"log"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 )
+
+var GVFS_FUSE_ROOT = fmt.Sprintf("/run/user/%v/gvfs/", os.Getuid())
 
 func mountDfs(username, password string) bool {
 	domain := "URT"
@@ -60,11 +63,17 @@ func createSymlink(username string) (target string, err error) {
 	server := "naf1"
 
 	fuse_dir := fmt.Sprintf(
-		"../gvfs-fuse-mount/smb-share:server=%s,share=%s,user=%s",
-		server, username, username)
-	
+		"%s/smb-share:server=%s,share=%s,user=%s",
+		GVFS_FUSE_ROOT, server, username, username)
 	target = fmt.Sprintf("dfs/%s", getRandomString(64))
-	os.Symlink(fuse_dir, target)
+	
+	log.Print(fuse_dir)
+	log.Print(target)
+
+	err = os.Symlink(fuse_dir, target)
+	if err != nil {
+		log.Fatal(err)
+	}
 	return target, nil
 }
 
@@ -85,6 +94,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		type LoginResult struct {
 			Success bool
 			Target string
@@ -104,24 +114,34 @@ func handler_logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handler_dfs(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "dfs")
+	filename := path.Clean(r.URL.Path[1:])
+	log.Print(filename)
+	if filename == "dfs" {
+		fmt.Fprintf(w, "dfs")
+		return
+	}
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		fmt.Fprintf(w, "404")
+		return
+	}
+	h := http.StripPrefix("/dfs/", http.FileServer(http.Dir("./dfs/")))
+	h.ServeHTTP(w, r)
 }
 
+// not reliable ?
 func startGvfsFuse() {
-	os.Mkdir("gvfs-fuse-mount", 0750)
-	cmd := exec.Command("/usr/lib/gvfs/gvfsd-fuse", "-f",  "gvfs-fuse-mount/")
+	os.Mkdir("gvfs-fuse-mount2", 0750)
+	cmd := exec.Command("/usr/lib/gvfs/gvfsd-fuse", "-f",  "gvfs-fuse-mount2/")
 	cmd.Run()
 }
 
 func main() {
-	go startGvfsFuse()
+	// not reliable ?
+	//go startGvfsFuse()
 
 	http.HandleFunc("/login", handler_login)
 	http.HandleFunc("/logout", handler_logout)
-
-	http.Handle("/dfs/", 
-		http.StripPrefix("/dfs/", http.FileServer(http.Dir("dfs"))))
-
+	http.HandleFunc("/dfs/", handler_dfs)
 
 	address := ":8080"
 	log.Print("listen on ", address)
