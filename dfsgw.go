@@ -12,6 +12,9 @@ import (
 	smb "github.com/mvo5/libsmbclient-go"
 )
 
+// the root smb server
+const SERVER = "smb://naf1/"
+
 func getRandomString(length int) string {
     const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
     var bytes = make([]byte, length)
@@ -36,8 +39,13 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// FIXME: *cough* this means its single user for now
+		smb.Global_auth_callback = func(server_name, share_name string) (string, string, string) {
+			return "URT", username, password
+		}
+
 		client := smb.New()
-		dh, err := client.Opendir("smb://localhost/")
+		dh, err := client.Opendir(SERVER)
 		defer client.Closedir(dh)
 
 		if err != nil {
@@ -95,20 +103,21 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 
 	client := session_to_client_ctx[session_id]
 
-	// FIXME: duplicated code!!!
+	// FIXME: uggggggllllllyyyy
 	if strings.HasSuffix(filename, "/") {
-		dh, err := client.Opendir("smb://localhost" + filename)
+		dh, err := client.Opendir(SERVER + filename)
 		defer client.Closedir(dh)
 		if err != nil {
 			fmt.Fprintf(w, "failed to opendir %s (%s)", filename, err)
 		}
 		list_dir(w, client, dh, r.URL.Path)
 	} else {
-		f, err := client.Open("smb://localhost/" + filename, 0, 0)
+		f, err := client.Open(SERVER + filename, 0, 0)
 		if err != nil {
 			fmt.Fprintf(w, "Failed to open %s (%s)", filename, err)
 		}
 		defer client.Close(f)
+		
 		buf := make([]byte, 1024)
 		for {
 			n, err := client.Read(f, buf)
@@ -119,7 +128,8 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 			if n == 0 {
 				break
 			}
-			w.Write([]byte(buf))
+			content := buf[:n]
+			w.Write(content)
 		}
 	}
 }
