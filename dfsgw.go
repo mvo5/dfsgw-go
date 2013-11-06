@@ -2,52 +2,15 @@ package main
 
 import (
 	"crypto/rand" 
-	"path"
-	"io"
 	"fmt"
 	"log"
+	"strings"
 	"html/template"
 	"net/http"
-	"os"
-	"os/exec"
+	// external
+	"github.com/gorilla/sessions"
+	smb "github.com/mvo5/libsmbclient-go"
 )
-
-var GVFS_FUSE_ROOT = fmt.Sprintf("/run/user/%v/gvfs/", os.Getuid())
-
-func mountDfs(username, password string) bool {
-	domain := "URT"
-	host := "naf1"
-	smb_share := fmt.Sprintf("smb://%s@%s/%s", username, host, username)
-	log.Print(smb_share)
-
-	cmd := exec.Command("gvfs-mount", smb_share)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		log.Fatal(err)
-	}
-	stdin.Write([]byte(domain + "\n"))
-	stdin.Write([]byte(password + "\n"))
-
-	go io.Copy(os.Stdout, stdout) 
-        go io.Copy(os.Stderr, stderr) 
-
-	cmd.Wait()
-
-	return true;
-}
 
 func getRandomString(length int) string {
     const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -59,23 +22,9 @@ func getRandomString(length int) string {
     return string(bytes)
 }
 
-func createSymlink(username string) (target string, err error) {
-	server := "naf1"
+var session_store = sessions.NewCookieStore([]byte(getRandomString(64)))
+var session_to_client_ctx = make(map[string]*smb.Client)
 
-	fuse_dir := fmt.Sprintf(
-		"%s/smb-share:server=%s,share=%s,user=%s",
-		GVFS_FUSE_ROOT, server, username, username)
-	target = fmt.Sprintf("dfs/%s", getRandomString(64))
-	
-	log.Print(fuse_dir)
-	log.Print(target)
-
-	err = os.Symlink(fuse_dir, target)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return target, nil
-}
 
 func handler_login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
@@ -87,26 +36,47 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// FIXME: CSRF protection (?)
-		res := mountDfs(username, password)
+		client := smb.New()
+		dh, err := client.Opendir("smb://localhost/")
+		defer client.Closedir(dh)
 
-		target, err := createSymlink(username)
 		if err != nil {
-			log.Fatal(err)
+			w.Write([]byte("Failed to login"))
+			return
 		}
+		
+		// on login, save session and client context
+		session_id :=  getRandomString(64)
+		// FIXME: store last access time for periodic cleanup
+		session_to_client_ctx[session_id] = client
 
-		type LoginResult struct {
-			Success bool
-			Target string
+		session, _ := session_store.Get(r, "dfsgw")
+		session.Values["session_id"] = session_id
+		session_to_client_ctx[session_id] = client
+		err = session.Save(r, w)
+		if err != nil {
+			fmt.Fprintf(w, "fail %s\n", err)
 		}
-		r := LoginResult{res, target}
-		t, _ := template.ParseFiles("login_done.html")
-		t.Execute(w, r)
-
+		list_dir(w, client, dh, "/dfs")
 		return
 	} 
 	t, _ := template.ParseFiles("login.html")
 	t.Execute(w, nil)
+}
+
+func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent string) {
+	for {
+		dirent, err := client.Readdir(dh)
+		if err != nil {
+			break
+		}
+		switch dirent.Type {
+		case smb.SMBC_FILE_SHARE, smb.SMBC_DIR: 
+			fmt.Fprintf(w, "<a href=\"%s/%s/\">%s - %s</a><p>\n", parent, dirent.Name, dirent.Name, dirent.Comment)
+		case smb.SMBC_FILE: // file
+			fmt.Fprintf(w, "<a href=\"%s/%s\">%s - %s</a><p>", parent, dirent.Name, dirent.Name, dirent.Comment)
+		}
+	}
 }
 
 func handler_logout(w http.ResponseWriter, r *http.Request) {
@@ -114,31 +84,47 @@ func handler_logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handler_dfs(w http.ResponseWriter, r *http.Request) {
-	filename := path.Clean(r.URL.Path[1:])
-	log.Print(filename)
-	if filename == "dfs" {
-		fmt.Fprintf(w, "dfs")
-		return
-	}
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		fmt.Fprintf(w, "404")
-		return
-	}
-	h := http.StripPrefix("/dfs/", http.FileServer(http.Dir("./dfs/")))
-	h.ServeHTTP(w, r)
-}
+	filename := r.URL.Path[len("/dfs"):]
+	session, _ := session_store.Get(r, "dfsgw")
+	session_id, ok := session.Values["session_id"].(string)
 
-// not reliable ?
-func startGvfsFuse() {
-	os.Mkdir("gvfs-fuse-mount2", 0750)
-	cmd := exec.Command("/usr/lib/gvfs/gvfsd-fuse", "-f",  "gvfs-fuse-mount2/")
-	cmd.Run()
+	if !ok {
+		fmt.Fprint(w, "invalid session id\n")
+		return
+	}
+
+	client := session_to_client_ctx[session_id]
+
+	// FIXME: duplicated code!!!
+	if strings.HasSuffix(filename, "/") {
+		dh, err := client.Opendir("smb://localhost" + filename)
+		defer client.Closedir(dh)
+		if err != nil {
+			fmt.Fprintf(w, "failed to opendir %s (%s)", filename, err)
+		}
+		list_dir(w, client, dh, r.URL.Path)
+	} else {
+		f, err := client.Open("smb://localhost/" + filename, 0, 0)
+		if err != nil {
+			fmt.Fprintf(w, "Failed to open %s (%s)", filename, err)
+		}
+		defer client.Close(f)
+		buf := make([]byte, 1024)
+		for {
+			n, err := client.Read(f, buf)
+			if err != nil {
+				fmt.Fprintf(w, "Failed to read %s (%s)", filename, err)
+				break
+			}
+			if n == 0 {
+				break
+			}
+			w.Write([]byte(buf))
+		}
+	}
 }
 
 func main() {
-	// not reliable ?
-	//go startGvfsFuse()
-
 	http.HandleFunc("/login", handler_login)
 	http.HandleFunc("/logout", handler_logout)
 	http.HandleFunc("/dfs/", handler_dfs)
