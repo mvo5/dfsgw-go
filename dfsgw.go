@@ -14,6 +14,7 @@ import (
 
 // the root smb server
 const SERVER = "smb://naf1/"
+const DOMAIN = "URT"
 
 func getRandomString(length int) string {
     const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -39,12 +40,13 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// FIXME: *cough* this means its single user for now
-		smb.Global_auth_callback = func(server_name, share_name string) (string, string, string) {
-			return "URT", username, password
-		}
-
 		client := smb.New()
+		fn := func(server_name, share_name string)(string, string, string) {
+			return DOMAIN, username, password
+		}
+		client.SetAuthCallback(fn)
+
+
 		dh, err := client.Opendir(SERVER)
 		defer client.Closedir(dh)
 
