@@ -2,4 +2,4 @@
 Run:
 $ . env.sh
 $ go get github.com/mvo5/libsmbclient-go
-$ go get gorilla/sessions 
+$ go get github.com/gorilla/sessions 

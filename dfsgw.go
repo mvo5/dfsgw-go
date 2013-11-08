@@ -48,7 +48,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 
 
 		dh, err := client.Opendir(SERVER)
-		defer client.Closedir(dh)
+		defer dh.Closedir()
 
 		if err != nil {
 			w.Write([]byte("Failed to login"))
@@ -76,7 +76,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 
 func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent string) {
 	for {
-		dirent, err := client.Readdir(dh)
+		dirent, err := dh.Readdir()
 		if err != nil {
 			break
 		}
@@ -108,7 +108,7 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 	// FIXME: uggggggllllllyyyy
 	if strings.HasSuffix(filename, "/") {
 		dh, err := client.Opendir(SERVER + filename)
-		defer client.Closedir(dh)
+		defer dh.Closedir()
 		if err != nil {
 			fmt.Fprintf(w, "failed to opendir %s (%s)", filename, err)
 		}
@@ -118,11 +118,11 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Fprintf(w, "Failed to open %s (%s)", filename, err)
 		}
-		defer client.Close(f)
+		defer f.Close()
 		
 		buf := make([]byte, 1024)
 		for {
-			n, err := client.Read(f, buf)
+			n, err := f.Read(buf)
 			if err != nil {
 				fmt.Fprintf(w, "Failed to read %s (%s)", filename, err)
 				break
