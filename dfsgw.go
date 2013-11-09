@@ -1,12 +1,13 @@
 package main
 
 import (
-	"crypto/rand" 
+	"crypto/rand"
+	"flag"
 	"fmt"
-	"log"
-	"strings"
 	"html/template"
+	"log"
 	"net/http"
+	"strings"
 	// external
 	"github.com/gorilla/sessions"
 	smb "github.com/mvo5/libsmbclient-go"
@@ -14,22 +15,21 @@ import (
 
 // the root smb server
 //const SERVER = "smb://naf1/"
-const SERVER = "smb://localhost/"
-const DOMAIN = "URT"
+var SERVER = "smb://localhost/"
+var DOMAIN = "URT"
 
 func getRandomString(length int) string {
-    const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
-    var bytes = make([]byte, length)
-    rand.Read(bytes)
-    for i, b := range bytes {
-        bytes[i] = alphanum[b % byte(len(alphanum))]
-    }
-    return string(bytes)
+	const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
+	var bytes = make([]byte, length)
+	rand.Read(bytes)
+	for i, b := range bytes {
+		bytes[i] = alphanum[b%byte(len(alphanum))]
+	}
+	return string(bytes)
 }
 
 var session_store = sessions.NewCookieStore([]byte(getRandomString(64)))
 var session_to_client_ctx = make(map[string]*smb.Client)
-
 
 func handler_login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
@@ -42,7 +42,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		}
 
 		client := smb.New()
-		fn := func(server_name, share_name string)(string, string, string) {
+		fn := func(server_name, share_name string) (string, string, string) {
 			return DOMAIN, username, password
 		}
 		client.SetAuthCallback(fn)
@@ -54,9 +54,9 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Failed to login"))
 			return
 		}
-		
+
 		// on login, save session and client context
-		session_id :=  getRandomString(64)
+		session_id := getRandomString(64)
 		// FIXME: store last access time for periodic cleanup
 		session_to_client_ctx[session_id] = client
 
@@ -69,7 +69,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		}
 		list_dir(w, client, dh, "/dfs")
 		return
-	} 
+	}
 	t, err := template.ParseFiles("base.html", "login.html")
 	if err != nil {
 		log.Fatal(err)
@@ -77,10 +77,10 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 	t.ExecuteTemplate(w, "base", nil)
 }
 
-func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent string) {
+func list_dir(w http.ResponseWriter, client *smb.Client, dh smb.File, parent string) {
 	type Dir struct {
-		Parent string
-		Dirinfo []smb.Dirent
+		Parent   string
+		Dirinfo  []smb.Dirent
 		Fileinfo []smb.Dirent
 	}
 	d := Dir{Parent: parent}
@@ -93,14 +93,14 @@ func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent str
 			continue
 		}
 		switch dirent.Type {
-		case smb.SMBC_FILE_SHARE, smb.SMBC_DIR: 
+		case smb.SMBC_FILE_SHARE, smb.SMBC_DIR:
 			d.Dirinfo = append(d.Dirinfo, *dirent)
 		case smb.SMBC_FILE:
 			d.Fileinfo = append(d.Fileinfo, *dirent)
 		}
 	}
 	t := template.Must(template.New("dir").ParseFiles("base.html", "dir.html"))
-	err:= t.ExecuteTemplate(w, "base", d)
+	err := t.ExecuteTemplate(w, "base", d)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func handler_logout(w http.ResponseWriter, r *http.Request) {
 		session.Values["session_id"] = nil
 		session.Save(r, w)
 	}
-	
+
 	t.ExecuteTemplate(w, "base", nil)
 
 }
@@ -149,12 +149,12 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		}
 		list_dir(w, client, dh, r.URL.Path)
 	} else {
-		f, err := client.Open(SERVER + filename, 0, 0)
+		f, err := client.Open(SERVER+filename, 0, 0)
 		if err != nil {
 			fmt.Fprintf(w, "Failed to open %s (%s)", filename, err)
 		}
 		defer f.Close()
-		
+
 		buf := make([]byte, 1024)
 		for {
 			n, err := f.Read(buf)
@@ -172,6 +172,13 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	flag.StringVar(&SERVER, "server", "smb://localhost",
+		"The smb server to use")
+	flag.StringVar(&DOMAIN, "domain", "URT",
+		"The domain to use")
+	flag.Parse()
+	log.Print(fmt.Sprintf("Using server %s (domain %s)\n", SERVER, DOMAIN))
+
 	http.HandleFunc("/login", handler_login)
 	http.HandleFunc("/logout", handler_logout)
 	http.HandleFunc("/dfs/", handler_dfs)
