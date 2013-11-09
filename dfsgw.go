@@ -74,21 +74,35 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	t.ExecuteTemplate(w, "base", "Login")
+	t.ExecuteTemplate(w, "base", nil)
 }
 
 func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent string) {
+	type Dir struct {
+		Parent string
+		Dirinfo []smb.Dirent
+		Fileinfo []smb.Dirent
+	}
+	d := Dir{Parent: parent}
 	for {
 		dirent, err := dh.Readdir()
 		if err != nil {
 			break
 		}
+		if dirent.Name == ".." || dirent.Name == "." {
+			continue
+		}
 		switch dirent.Type {
 		case smb.SMBC_FILE_SHARE, smb.SMBC_DIR: 
-			fmt.Fprintf(w, "<a href=\"%s/%s/\">%s - %s</a><p>\n", parent, dirent.Name, dirent.Name, dirent.Comment)
-		case smb.SMBC_FILE: // file
-			fmt.Fprintf(w, "<a href=\"%s/%s\">%s - %s</a><p>", parent, dirent.Name, dirent.Name, dirent.Comment)
+			d.Dirinfo = append(d.Dirinfo, *dirent)
+		case smb.SMBC_FILE:
+			d.Fileinfo = append(d.Fileinfo, *dirent)
 		}
+	}
+	t := template.Must(template.New("dir").ParseFiles("base.html", "dir.html"))
+	err:= t.ExecuteTemplate(w, "base", d)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -108,7 +122,7 @@ func handler_logout(w http.ResponseWriter, r *http.Request) {
 		session.Save(r, w)
 	}
 	
-	t.ExecuteTemplate(w, "base", "Logout")
+	t.ExecuteTemplate(w, "base", nil)
 
 }
 
@@ -118,7 +132,8 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 	session_id, ok := session.Values["session_id"].(string)
 
 	if !ok {
-		fmt.Fprint(w, "invalid session id\n")
+		// FIXME: send proper error code
+		fmt.Fprint(w, "<html>invalid session id, please <a href='/login'>login</a>\n</html>")
 		return
 	}
 
@@ -130,6 +145,7 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		defer dh.Closedir()
 		if err != nil {
 			fmt.Fprintf(w, "failed to opendir %s (%s)", filename, err)
+			return
 		}
 		list_dir(w, client, dh, r.URL.Path)
 	} else {

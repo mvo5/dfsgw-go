@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1>Content of {{.Parent}}</h1>
+
+<ul>
+  {{$Parent := .Parent}}
+  {{range .Dirinfo}}
+  <li><a href="{{$Parent}}/{{.Name}}/">{{.Name}} - {{.Comment}}</a></li>
+  {{end}}
+  {{range .Fileinfo}}
+  <li><a href="{{$Parent}}/{{.Name}}">{{.Name}} - {{.Comment}}</a></li>
+  {{end}}
+</ul>
+
+{{end}}
