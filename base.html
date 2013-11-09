@@ -1,0 +1,23 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Dfsgw</title>
+  <link rel="stylesheet" href="static/style.css" />
+   <link rel="stylesheet" 
+        href="static/components/bootstrap.css/index.css" />
+</head>
+
+<body>
+  <a href="/logout/">Logout</a>
+
+  <div>
+    {{template "content"}}
+  </div>
+
+  <footer>
+    &copy; ZIMK
+  </footer>
+</body>
+</html>
+{{end}}

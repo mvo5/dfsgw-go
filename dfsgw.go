@@ -13,7 +13,8 @@ import (
 )
 
 // the root smb server
-const SERVER = "smb://naf1/"
+//const SERVER = "smb://naf1/"
+const SERVER = "smb://localhost/"
 const DOMAIN = "URT"
 
 func getRandomString(length int) string {
@@ -46,7 +47,6 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		}
 		client.SetAuthCallback(fn)
 
-
 		dh, err := client.Opendir(SERVER)
 		defer dh.Closedir()
 
@@ -70,8 +70,11 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		list_dir(w, client, dh, "/dfs")
 		return
 	} 
-	t, _ := template.ParseFiles("login.html")
-	t.Execute(w, nil)
+	t, err := template.ParseFiles("base.html", "login.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	t.ExecuteTemplate(w, "base", "Login")
 }
 
 func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent string) {
@@ -90,7 +93,23 @@ func list_dir(w http.ResponseWriter, client* smb.Client, dh smb.File, parent str
 }
 
 func handler_logout(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "logout")
+	t, err := template.ParseFiles("base.html", "logout.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	session, _ := session_store.Get(r, "dfsgw")
+	session_id, ok := session.Values["session_id"].(string)
+	if ok {
+		client := session_to_client_ctx[session_id]
+		client.Destroy()
+		delete(session_to_client_ctx, session_id)
+
+		session.Values["session_id"] = nil
+		session.Save(r, w)
+	}
+	
+	t.ExecuteTemplate(w, "base", "Logout")
+
 }
 
 func handler_dfs(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +159,7 @@ func main() {
 	http.HandleFunc("/login", handler_login)
 	http.HandleFunc("/logout", handler_logout)
 	http.HandleFunc("/dfs/", handler_dfs)
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	address := ":8080"
 	log.Print("listen on ", address)

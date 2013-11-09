@@ -1,0 +1,9 @@
+{
+  "name": "dfsgw",
+  "version": "0.0.1",
+  "dependencies": {
+    "jquery": "~1.9.1",
+    "bootstrap.css": "https://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css"
+  },
+  "devDependencies": {}
+}
