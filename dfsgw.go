@@ -70,7 +70,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		list_dir(w, client, dh, "/dfs")
 		return
 	}
-	t, err := template.ParseFiles("base.html", "login.html")
+	t, err := template.ParseFiles("templates/base.html",  "templates/login.html")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func list_dir(w http.ResponseWriter, client *smb.Client, dh smb.File, parent str
 			d.Fileinfo = append(d.Fileinfo, *dirent)
 		}
 	}
-	t := template.Must(template.New("dir").ParseFiles("base.html", "dir.html"))
+	t := template.Must(template.New("dir").ParseFiles("templates/base.html", "templates/dir.html"))
 	err := t.ExecuteTemplate(w, "base", d)
 	if err != nil {
 		log.Fatal(err)
@@ -107,7 +107,7 @@ func list_dir(w http.ResponseWriter, client *smb.Client, dh smb.File, parent str
 }
 
 func handler_logout(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("base.html", "logout.html")
+	t, err := template.ParseFiles("templates/base.html", "templates/logout.html")
 	if err != nil {
 		log.Fatal(err)
 	}
