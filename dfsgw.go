@@ -152,6 +152,7 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		f, err := client.Open(SERVER+filename, 0, 0)
 		if err != nil {
 			fmt.Fprintf(w, "Failed to open %s (%s)", filename, err)
+			return
 		}
 		defer f.Close()
 
