@@ -18,6 +18,9 @@ import (
 var SERVER = "smb://localhost/"
 var DOMAIN = "URT"
 
+var session_store = sessions.NewCookieStore([]byte(getRandomString(64)))
+var session_to_client_ctx = make(map[string]*smb.Client)
+
 func getRandomString(length int) string {
 	const alphanum = "0123456789abcdefghijklmnopqrstuvwxyz"
 	var bytes = make([]byte, length)
@@ -27,9 +30,6 @@ func getRandomString(length int) string {
 	}
 	return string(bytes)
 }
-
-var session_store = sessions.NewCookieStore([]byte(getRandomString(64)))
-var session_to_client_ctx = make(map[string]*smb.Client)
 
 func handler_login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
@@ -67,7 +67,7 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Fprintf(w, "fail %s\n", err)
 		}
-		list_dir(w, client, dh, "/dfs")
+		http.Redirect(w, r, "/dfs/", http.StatusFound)
 		return
 	}
 	t, err := template.ParseFiles("templates/base.html",  "templates/login.html")
@@ -159,11 +159,11 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		buf := make([]byte, 1024)
 		for {
 			n, err := f.Read(buf)
-			if err != nil {
-				fmt.Fprintf(w, "Failed to read %s (%s)", filename, err)
+			if n == 0 {
 				break
 			}
-			if n == 0 {
+			if err != nil {
+				fmt.Fprintf(w, "Failed to read %s (%s)", filename, err)
 				break
 			}
 			content := buf[:n]
@@ -173,19 +173,32 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	var address string
 	flag.StringVar(&SERVER, "server", "smb://localhost",
 		"The smb server to use")
 	flag.StringVar(&DOMAIN, "domain", "URT",
 		"The domain to use")
+	flag.StringVar(&address, "address", ":8080",
+		"the interface/port to listen on")
 	flag.Parse()
-	log.Print(fmt.Sprintf("Using server %s (domain %s)\n", SERVER, DOMAIN))
 
 	http.HandleFunc("/login", handler_login)
 	http.HandleFunc("/logout", handler_logout)
 	http.HandleFunc("/dfs/", handler_dfs)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	address := ":8080"
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		session, _ := session_store.Get(r, "dfsgw")
+		_, ok := session.Values["session_id"].(string)
+		if !ok {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/dfs/", http.StatusFound)
+	})
+
+	// start it
+	log.Print(fmt.Sprintf("Using server %s (domain %s)\n", SERVER, DOMAIN))
 	log.Print("listen on ", address)
 	http.ListenAndServe(address, nil)
 }
