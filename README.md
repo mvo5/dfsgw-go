@@ -17,7 +17,7 @@ $ firefox http://localhost:8080/login
 
 Build:
 ```
-$ sudo apt-get install golang
+$ sudo apt-get install golang libsmbclient-dev
 $ . env.sh
 $ go get github.com/mvo5/libsmbclient-go
 $ go get github.com/gorilla/sessions 

@@ -74,7 +74,11 @@ func handler_login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	t.ExecuteTemplate(w, "base", nil)
+	type info struct {
+		Server string
+		Domain string
+	}
+	t.ExecuteTemplate(w, "base", info{Server: SERVER, Domain: DOMAIN})
 }
 
 func list_dir(w http.ResponseWriter, client *smb.Client, dh smb.File, parent string) {
@@ -156,7 +160,7 @@ func handler_dfs(w http.ResponseWriter, r *http.Request) {
 		}
 		defer f.Close()
 
-		buf := make([]byte, 1024)
+		buf := make([]byte, 32*1024)
 		for {
 			n, err := f.Read(buf)
 			if n == 0 {
