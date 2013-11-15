@@ -17,7 +17,7 @@ $ firefox http://localhost:8080/login
 
 Build:
 ```
-$ sudo apt-get install golang libsmbclient-dev
+$ sudo apt-get install golang libsmbclient-dev make
 $ make
 ```
 
