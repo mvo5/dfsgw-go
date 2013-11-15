@@ -1,16 +1,50 @@
 {{define "content"}}
-<a href="/logout">Logout</a>
 
-<h1>Content of {{.Parent}}</h1>
+<div>
+	<div class="pull-right"><a href="/logout">Logout</a></div>
+</div>
 
-<ul>
-  {{$Parent := .Parent}}
-  {{range .Dirinfo}}
-  <li><a href="{{$Parent}}/{{.Name}}/">{{.Name}} {{.Comment}}</a></li>
-  {{end}}
-  {{range .Fileinfo}}
-  <li><a href="{{$Parent}}/{{.Name}}">{{.Name}} {{.Comment}}</a></li>
-  {{end}}
-</ul>
+<hr />
+
+<ol class="breadcrumb">
+  <!-- <li><a href="#">Home</a></li> -->
+  <!-- <li><a href="#">Library</a></li> -->
+  <li class="active">{{.Parent}}</li>
+</ol>
+
+<table class="table table-striped">
+	<thead>
+		<th>Name</th>
+		<th>Size</th>
+		<th>Comment</th>
+	</thead>
+	<tbody>
+		{{$Parent := .Parent}}
+		<tr>
+			<td><a href="{{$Parent}}">. (Current Directory)</a></td>
+			<td><em>N. A.</em></td>
+			<td>Current Directory</td>
+		</tr>
+		<tr>
+			<td><a href="{{$Parent}}../">.. (Parent Directory)</a></td>
+			<td><em>N. A.</em></td>
+			<td>Parent Directory</td>
+		</tr>
+		{{range .Dirinfo}}
+		<tr>
+			<td><a href="{{$Parent}}{{.Name}}/">{{.Name}}</a></td>
+			<td><em>N. A.</em></td>
+			<td>{{.Comment}}</td>
+		</tr>
+		{{end}}
+		{{range .Fileinfo}}
+		<tr>
+			<td><a href="{{$Parent}}{{.Name}}">{{.Name}}</a></td>
+			<td><em>N. A.</em></td>
+			<td>{{.Comment}}</td>
+		</tr>
+		{{end}}
+	</tbody>
+</table>
 
 {{end}}
